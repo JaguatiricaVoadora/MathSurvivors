@@ -147,52 +147,52 @@ function spawnEnemy(num) {
   if (side === 2) { x = Math.random() * canvas.width; y = canvas.height + 50; }
   if (side === 3) { x = -50; y = Math.random() * canvas.height; }
   spawnPoints.push({x, y, time: Date.now()});
-  let hp = num;
+  // Ajuste de dificuldade: progressão mais suave
+  let hp = Math.round(num * (1 + Math.min(wave, 20) * 0.04));
   let maxWaveSpeed = Math.min(wave, 30);
-  let speedBoost = (maxWaveSpeed - 1) * 0.025;
-  let speed = 0.5 + num * 0.15 + speedBoost;
+  // Progressão de velocidade mais forte para normais em waves altas
+  let baseSpeed = 0.5 + num * 0.13;
+  let speedBoost = (Math.max(wave - 1, 0)) * 0.032; // boost maior
+  let speed = baseSpeed + speedBoost;
   let behavior = "normal";
   let jumpLevel = 0;
   let isComedor = false;
   let color = "#0f0";
-  
-  if (player.value < 0) {hp += Math.abs(player.value);} // valor negativo = inimigos mais forte
+
+  if (player.value < 0) {hp += Math.abs(player.value) * 0.7;} // Penalidade menor
   if (num === 1) { speed = 0.5 + speedBoost; hp = 1; behavior = "slow"; }
   if (num === 2) { speed = 0.5 + speedBoost; hp = 2; behavior = "merge"; }
-  if (num === 6) { speed = 0.8 + num * 0.1 + speedBoost; hp = num; behavior = "normal"; }
-  // 7, 8, 9 sempre rápidos
-  if ([7,8,9].includes(num)) { speed = 2.2 + speedBoost; hp = num; behavior = "fast"; }
-  if (num === 3 || num === 4 || num === 5) { speed = 0.8 + num * 0.1 + speedBoost; hp = num; behavior = "normal"; }
-  // Bosses dezenas: na sua wave são boss, depois viram normais nerfados
+  if (num === 6) { speed = 0.7 + num * 0.09 + speedBoost; hp = num; behavior = "normal"; }
+  if ([7,8,9].includes(num)) { speed = 1.7 + speedBoost; hp = num; behavior = "fast"; }
+  if (num === 3 || num === 4 || num === 5) { speed = 0.7 + num * 0.09 + speedBoost; hp = num; behavior = "normal"; }
+  // Bosses dezenas
   if (num >= 10 && num % 10 === 0) {
     if (wave === num) {
       behavior = "jump";
       jumpLevel = Math.floor(num / 5);
-      speed = 0.45 + jumpLevel * 0.10 + speedBoost; // Nerf: reduzido de 0.6+ para 0.45+
-      hp = num + jumpLevel;
+      speed = 0.38 + jumpLevel * 0.09 + speedBoost; // Mais lento
+      hp = num + jumpLevel * 1.2;
     } else if (wave > num) {
-      // Após a wave, aparecem como normais nerfados
       behavior = "jump";
-      jumpLevel = Math.max(1, Math.floor(num / 5) - 1); // jumpLevel menor
-      speed = 0.32 + jumpLevel * 0.07 + speedBoost; // Nerf: reduzido de 0.4+ para 0.32+
-      hp = Math.floor(num * 0.7); // menos vida
+      jumpLevel = Math.max(1, Math.floor(num / 5) - 1);
+      speed = 0.26 + jumpLevel * 0.06 + speedBoost;
+      hp = Math.floor(num * 0.6);
     }
   }
-  // SubBosses: só aparecem na sua wave, wave exclusiva
+  // SubBosses
   if (num >= 15 && num % 10 === 5 && wave === num) {
     behavior = "jump";
     jumpLevel = Math.floor(num / 5);
-    speed = 0.55 + jumpLevel * 0.16 + speedBoost; // Nerf: reduzido de 0.7+ para 0.55+
-    hp = num + jumpLevel;
+    speed = 0.45 + jumpLevel * 0.13 + speedBoost;
+    hp = num + jumpLevel * 1.1;
   }
-  // Comedor de PowerUp: 30% de chance, cor vermelha
-  if (Math.random() < 0.3) {
+  // Comedor de PowerUp: só aparece a partir da wave 6
+  if (wave >= 6 && Math.random() < 0.18 + Math.min(0.02 * (wave-6), 0.12)) {
     isComedor = true;
     color = "#f00";
-    // Se for boss dezena derrotado, deixa rápido
     if (num >= 10 && num % 10 === 0 && wave > num) {
       behavior = "fast";
-      speed = 2.2 + speedBoost;
+      speed = 1.7 + speedBoost;
     }
   }
   enemies.push({ x, y, size: 30, value: num, hp, speed, behavior, jumpTimer: 0, jumpDir: 0, jumpLevel, isComedor, color, hit: 0, hitNums: [] });
@@ -232,9 +232,10 @@ let lastShotTime = 0;
 function autoShoot() {
   if (enemies.length === 0) return;
   const now = Date.now();
-  // Tiros mais lentos: value 0 = 1/s, value 2 = 1.5/s, value 4 = 2/s, etc
-  const effectiveValue = Math.min(player.value, 20); // Limite de força dos tiros
-  const shotsPerSecond = Math.max(1, Math.floor((effectiveValue + 2) / 2));
+  const effectiveValue = Math.min(player.value, 20);
+  // Limite máximo de tiros por segundo para evitar travamento
+  const MAX_SHOTS_PER_SECOND = 10;
+  const shotsPerSecond = Math.max(1, Math.min(MAX_SHOTS_PER_SECOND, Math.floor((effectiveValue + 2) / 2)));
   const cooldown = 1000 / shotsPerSecond;
   if (now - lastShotTime < cooldown) return;
   let closest = null;
@@ -257,27 +258,49 @@ function autoShoot() {
     if (player.value >= 0) {
       damage = Math.max(1, Math.floor(player.value / 2) + 1);
     } else {
-      // Dano fracionário para valores negativos
-      damage = Math.max(0.25, 1 + player.value * 0.5); // Ex: value -2 = 0, value -4 = -1 -> min 0.25
+      damage = Math.max(0.5, 1 + player.value * 0.5);
+    }
+    // Espalhamento dos tiros se value >= 10
+    let spread = 0;
+    if (player.value >= 10) spread = Math.min((player.value - 9) * 2, 18); // até 18px
+    let px = player.x, py = player.y;
+    if (spread > 0) {
+      const angle = Math.atan2(dy, dx) + (Math.random() - 0.5) * (spread / 80);
+      const distSpread = Math.random() * spread;
+      px += Math.cos(angle + Math.PI/2) * distSpread;
+      py += Math.sin(angle + Math.PI/2) * distSpread;
     }
     bullets.push({
-      x: player.x,
-      y: player.y,
+      x: px,
+      y: py,
       dx: (dx / dist) * 6,
       dy: (dy / dist) * 6,
-      damage: damage
+      damage: damage,
+      trailColor: getBulletTrailColor(player.value)
     });
     lastShotTime = now;
   }
+}
+// Função para cor do rastro
+function getBulletTrailColor(val) {
+  if (val >= 18) return '#ff0';
+  if (val >= 14) return '#f0f';
+  if (val >= 10) return '#0ff';
+  if (val >= 6) return '#5cf';
+  return '#fff';
 }
 
 // OPERAÇÕES MATEMATICAS
 function applyOperator(op) {
   if (op === "+") {
-    player.value += 1;
-    // Efeito extra: recupera "vida" fictícia (exemplo: invulnerabilidade curta)
-    player.invulnerable = 30; // 30 frames de invulnerabilidade
-    // Efeito visual: partículas verdes
+    // Se value >= 10, só ganha +1 a cada 2 operadores
+    if (player.value < 10 || !player._plusSkip) {
+      player.value += 1;
+      player._plusSkip = false;
+    } else {
+      player._plusSkip = true;
+    }
+    player.invulnerable = 30;
     for (let i = 0; i < 10; i++) {
       particles.push({
         x: player.x,
@@ -289,10 +312,10 @@ function applyOperator(op) {
       });
     }
   } else if (op === "-") {
-    player.value -= 1;
-    // Efeito extra: boost de velocidade temporário
-    player.speedBoost = 60; // 60 frames de boost
-    // Efeito visual: partículas amarelas
+    // Penalidade maior se value >= 15
+    if (player.value >= 15) player.value -= 2;
+    else player.value -= 1;
+    player.speedBoost = 60;
     for (let i = 0; i < 10; i++) {
       particles.push({
         x: player.x,
@@ -360,8 +383,15 @@ function applyOperator(op) {
   score += 10;
 }
 function spawnOperator() {
-  const ops = ["+", "-", "*", "/", "^"]; // Removido o %
-  const op = ops[Math.floor(Math.random() * ops.length)];
+  // Mais chance de operadores negativos, menos de "+"
+  // 25% +, 30% -, 20% *, 15% /, 10% ^
+  const opRand = Math.random();
+  let op;
+  if (opRand < 0.25) op = "+";
+  else if (opRand < 0.55) op = "-";
+  else if (opRand < 0.75) op = "*";
+  else if (opRand < 0.90) op = "/";
+  else op = "^";
   operators.push({
     x: Math.random() * canvas.width,
     y: Math.random() * canvas.height,
@@ -503,9 +533,29 @@ function update() {
       e.x += (dx / dist) * e.speed;
       e.y += (dy / dist) * e.speed;
     }
+    // Ajuste: bosses e subbosses não matam instantaneamente nas primeiras aparições
     if (dist < 20) {
-      alert("Game Over!\nScore: " + score);
-      location.reload();
+      if (e.behavior === "jump" && wave <= 15) {
+        // Primeiras waves: só tira valor do player e empurra
+        player.value = Math.max(0, player.value - 2);
+        player.x -= dx * 0.5;
+        player.y -= dy * 0.5;
+        // Efeito visual
+        for (let i = 0; i < 8; i++) {
+          particles.push({
+            x: player.x,
+            y: player.y,
+            dx: Math.random() * 4 - 2,
+            dy: Math.random() * 4 - 2,
+            life: 18,
+            color: '#f55'
+          });
+        }
+        continue;
+      } else {
+        alert("Game Over!\nScore: " + score);
+        location.reload();
+      }
     }
   }
 
@@ -537,8 +587,8 @@ function update() {
         }
         bullets.splice(i, 1);
         if (e.hp <= 0) {
-          // Dropa power up se for inimigo forte (6+) ou boss (10+)
-          if (e.value >= 6) spawnPowerUp(e.x, e.y);
+          // Dropa power up só se for inimigo forte (valor >= 8) ou boss (10+)
+          if (e.value >= 8 || e.value % 10 === 0) spawnPowerUp(e.x, e.y);
           enemies.splice(j, 1);
           score += 5;
           killCount++;
@@ -669,29 +719,41 @@ function draw() {
   // Bullets
   for (let b of bullets) {
     ctx.fillStyle = bulletColor;
+    // Rastro bonito
+    for (let t = 0; t < 7; t++) {
+      ctx.globalAlpha = 0.18 - t * 0.022;
+      ctx.beginPath();
+      ctx.arc(b.x - b.dx * t * 0.9, b.y - b.dy * t * 0.9, 4 - t * 0.5, 0, Math.PI * 2);
+      ctx.fillStyle = b.trailColor || '#fff';
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
     if (bulletShape === 'circle') {
       ctx.beginPath();
       ctx.arc(b.x, b.y, 4, 0, Math.PI * 2);
+      ctx.fillStyle = bulletColor;
       ctx.fill();
     } else if (bulletShape === 'square') {
+      ctx.fillStyle = bulletColor;
       ctx.fillRect(b.x - 4, b.y - 4, 8, 8);
     } else if (bulletShape === 'diamond') {
       ctx.save();
       ctx.translate(b.x, b.y);
       ctx.rotate(Math.PI / 4);
+      ctx.fillStyle = bulletColor;
       ctx.fillRect(-4, -4, 8, 8);
       ctx.restore();
     } else if (bulletShape === 'triangle') {
       ctx.save();
       ctx.translate(b.x, b.y);
-      // Calcular o ângulo do movimento do tiro
       const angle = Math.atan2(b.dy, b.dx);
       ctx.rotate(angle);
       ctx.beginPath();
-      ctx.moveTo(6, 0); // ponta para frente
+      ctx.moveTo(6, 0);
       ctx.lineTo(-4, 4.5);
       ctx.lineTo(-4, -4.5);
       ctx.closePath();
+      ctx.fillStyle = bulletColor;
       ctx.fill();
       ctx.restore();
     }
