@@ -295,7 +295,9 @@ function applyOperator(op) {
   if (op === "+") {
     // Se value >= 10, só ganha +1 a cada 2 operadores
     if (player.value < 10 || !player._plusSkip) {
-      player.value += 1;
+      if (player.value < 20) {
+        player.value = Math.min(20, player.value + 1);
+      }
       player._plusSkip = false;
     } else {
       player._plusSkip = true;
@@ -383,15 +385,24 @@ function applyOperator(op) {
   score += 10;
 }
 function spawnOperator() {
-  // Mais chance de operadores negativos, menos de "+"
-  // 25% +, 30% -, 20% *, 15% /, 10% ^
-  const opRand = Math.random();
+  // Mais chance de operadores negativos, menos de "+", "*", "^" se value >= 20
+  let possibleOps = ["+", "-", "*", "/", "^"];
+  if (player.value >= 20) {
+    possibleOps = possibleOps.filter(op => op !== "+" && op !== "*" && op !== "^");
+  }
   let op;
-  if (opRand < 0.25) op = "+";
-  else if (opRand < 0.55) op = "-";
-  else if (opRand < 0.75) op = "*";
-  else if (opRand < 0.90) op = "/";
-  else op = "^";
+  if (possibleOps.length === 5) {
+    // Valor normal
+    const opRand = Math.random();
+    if (opRand < 0.25) op = "+";
+    else if (opRand < 0.55) op = "-";
+    else if (opRand < 0.75) op = "*";
+    else if (opRand < 0.90) op = "/";
+    else op = "^";
+  } else {
+    // Sorteia entre os disponíveis
+    op = possibleOps[Math.floor(Math.random() * possibleOps.length)];
+  }
   operators.push({
     x: Math.random() * canvas.width,
     y: Math.random() * canvas.height,
@@ -403,7 +414,11 @@ function spawnOperator() {
 // Spawn de power up, por wave
 function spawnPowerUp(x, y) {
   // Cria um operador aleatório na posição do inimigo derrotado
-  const ops = ["+", "-", "*", "/", "^"];
+  let ops = ["+", "-", "*", "/", "^"];
+  // Se o value já é 20 ou mais, não sorteia mais "+", "*", "^"
+  if (player.value >= 20) {
+    ops = ops.filter(op => op !== "+" && op !== "*" && op !== "^");
+  }
   const op = ops[Math.floor(Math.random() * ops.length)];
   operators.push({
     x: x,
@@ -636,7 +651,60 @@ function update() {
   }
 
   if (enemies.length === 0) nextWave();
-  autoShoot();
+  // autoShoot();
+}
+// Função para mira manual (substitui autoShoot)
+function manualShootLoop() {
+  if (enemies.length === 0) return;
+  const now = Date.now();
+  const effectiveValue = Math.min(player.value, 20);
+  // Limite máximo de tiros por segundo para evitar travamento
+  const MAX_SHOTS_PER_SECOND = 10;
+  const shotsPerSecond = Math.max(1, Math.min(MAX_SHOTS_PER_SECOND, Math.floor((effectiveValue + 2) / 2)));
+  const cooldown = 1000 / shotsPerSecond;
+  if (now - lastShotTime < cooldown) return;
+  let closest = null;
+  let distMin = Infinity;
+  for (let e of enemies) {
+    const dx = e.x - player.x;
+    const dy = e.y - player.y;
+    const dist = dx * dx + dy * dy;
+    if (dist < distMin) {
+      distMin = dist;
+      closest = e;
+    }
+  }
+  if (closest) {
+    const dx = closest.x - player.x;
+    const dy = closest.y - player.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    // Dano proporcional ao valor do player
+    let damage;
+    if (player.value >= 0) {
+      damage = Math.max(1, Math.floor(player.value / 2) + 1);
+    } else {
+      damage = Math.max(0.5, 1 + player.value * 0.5);
+    }
+    // Espalhamento dos tiros se value >= 10
+    let spread = 0;
+    if (player.value >= 10) spread = Math.min((player.value - 9) * 2, 18); // até 18px
+    let px = player.x, py = player.y;
+    if (spread > 0) {
+      const angle = Math.atan2(dy, dx) + (Math.random() - 0.5) * (spread / 80);
+      const distSpread = Math.random() * spread;
+      px += Math.cos(angle + Math.PI/2) * distSpread;
+      py += Math.sin(angle + Math.PI/2) * distSpread;
+    }
+    bullets.push({
+      x: px,
+      y: py,
+      dx: (dx / dist) * 6,
+      dy: (dy / dist) * 6,
+      damage: damage,
+      trailColor: getBulletTrailColor(player.value)
+    });
+    lastShotTime = now;
+  }
 }
 
 // Dash
@@ -803,6 +871,7 @@ function draw() {
 function loop() {
   update();
   draw();
+  manualShootLoop(); // Chama a função de tiro manual
   requestAnimationFrame(loop);
 }
 
@@ -960,6 +1029,7 @@ window.addEventListener('keydown', function(e) {
 </script>
 <audio id="bgm" src="audio/background.mp3" loop preload="auto"></audio>
 <script src="background_music.js"></script>
+<script src="mouse_aim.js"></script>
 <script src="menu.js"></script>
 
 <!-- Botões de controle -->
