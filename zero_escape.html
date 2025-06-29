@@ -229,57 +229,43 @@ function nextWave() {
 
 // TIROS
 let lastShotTime = 0;
-function autoShoot() {
+let autoFire = false;
+function shootTowards(x, y) {
   if (enemies.length === 0) return;
   const now = Date.now();
   const effectiveValue = Math.min(player.value, 20);
-  // Limite máximo de tiros por segundo para evitar travamento
   const MAX_SHOTS_PER_SECOND = 10;
   const shotsPerSecond = Math.max(1, Math.min(MAX_SHOTS_PER_SECOND, Math.floor((effectiveValue + 2) / 2)));
   const cooldown = 1000 / shotsPerSecond;
   if (now - lastShotTime < cooldown) return;
-  let closest = null;
-  let distMin = Infinity;
-  for (let e of enemies) {
-    const dx = e.x - player.x;
-    const dy = e.y - player.y;
-    const dist = dx * dx + dy * dy;
-    if (dist < distMin) {
-      distMin = dist;
-      closest = e;
-    }
+  const dx = x - player.x;
+  const dy = y - player.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  if (dist === 0) return;
+  let damage;
+  if (player.value >= 0) {
+    damage = Math.max(1, Math.floor(player.value / 2) + 1);
+  } else {
+    damage = Math.max(0.5, 1 + player.value * 0.5);
   }
-  if (closest) {
-    const dx = closest.x - player.x;
-    const dy = closest.y - player.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    // Dano proporcional ao valor do player
-    let damage;
-    if (player.value >= 0) {
-      damage = Math.max(1, Math.floor(player.value / 2) + 1);
-    } else {
-      damage = Math.max(0.5, 1 + player.value * 0.5);
-    }
-    // Espalhamento dos tiros se value >= 10
-    let spread = 0;
-    if (player.value >= 10) spread = Math.min((player.value - 9) * 2, 18); // até 18px
-    let px = player.x, py = player.y;
-    if (spread > 0) {
-      const angle = Math.atan2(dy, dx) + (Math.random() - 0.5) * (spread / 80);
-      const distSpread = Math.random() * spread;
-      px += Math.cos(angle + Math.PI/2) * distSpread;
-      py += Math.sin(angle + Math.PI/2) * distSpread;
-    }
-    bullets.push({
-      x: px,
-      y: py,
-      dx: (dx / dist) * 6,
-      dy: (dy / dist) * 6,
-      damage: damage,
-      trailColor: getBulletTrailColor(player.value)
-    });
-    lastShotTime = now;
+  let spread = 0;
+  if (player.value >= 10) spread = Math.min((player.value - 9) * 2, 18);
+  let px = player.x, py = player.y;
+  if (spread > 0) {
+    const angle = Math.atan2(dy, dx) + (Math.random() - 0.5) * (spread / 80);
+    const distSpread = Math.random() * spread;
+    px += Math.cos(angle + Math.PI/2) * distSpread;
+    py += Math.sin(angle + Math.PI/2) * distSpread;
   }
+  bullets.push({
+    x: px,
+    y: py,
+    dx: (dx / dist) * 6,
+    dy: (dy / dist) * 6,
+    damage: damage,
+    trailColor: getBulletTrailColor(player.value)
+  });
+  lastShotTime = now;
 }
 // Função para cor do rastro
 function getBulletTrailColor(val) {
@@ -751,8 +737,6 @@ function draw() {
   // Enemies
   for (let e of enemies) {
     ctx.save();
-    // Efeito de hit removido
-    ctx.restore();
     ctx.fillStyle = e.color || "#0f0";
     ctx.font = e.size + "px monospace";
     ctx.fillText(e.value, e.x, e.y);
@@ -782,6 +766,7 @@ function draw() {
       ctx.restore();
       if (num.life <= 0) e.hitNums.splice(h, 1);
     }
+    ctx.restore();
   }
 
   // Bullets
@@ -869,10 +854,11 @@ function draw() {
 }
 
 function loop() {
+  if (paused) return;
   update();
   draw();
-  manualShootLoop(); // Chama a função de tiro manual
-  requestAnimationFrame(loop);
+  if (autoFire) autoFireLoop();
+  loopId = requestAnimationFrame(loop);
 }
 
 // Adiciona função global para iniciar o jogo após o menu
@@ -903,9 +889,8 @@ window.addEventListener('keydown', startMusicOnce);
 // Debug Tool para devs
 let debugPanel = null;
 let debugVisible = false;
-let showSpawns = false; // Novo: controla exibição dos spawns
-let spawnPoints = []; // Novo: armazena pontos de spawn
-
+let showSpawns = false;
+let spawnPoints = [];
 function createDebugPanel() {
   if (debugPanel) return;
   debugPanel = document.createElement('div');
@@ -918,13 +903,12 @@ function createDebugPanel() {
   debugPanel.style.fontSize = '14px';
   debugPanel.style.padding = '16px 18px 12px 18px';
   debugPanel.style.borderRadius = '10px';
-  debugPanel.style.zIndex = 10001; // Aumenta z-index para ficar acima dos botões
+  debugPanel.style.zIndex = 10001;
   debugPanel.style.boxShadow = '0 2px 12px #000a';
   debugPanel.style.minWidth = '220px';
-  debugPanel.style.cursor = 'move'; // Indica que é arrastável
+  debugPanel.style.cursor = 'move';
   debugPanel.innerHTML = `
     <b id="dbg-title">Debug Tool</b> <button id="dbg-close" style="float:right;background:#222;color:#fff;border:none;padding:2px 8px;border-radius:5px;cursor:pointer;">X</button><br>
-    <span style="color:#ff5;font-size:13px;">Voce nao deviar mexer nessas coisa ein!</span><br><br>
     <div>Wave: <input id="dbg-wave" type="number" min="1" value="${wave}" style="width:50px;"></div>
     <div style="margin-top:8px;">Spawn inimigo:<br>
       X: <input id="dbg-x" type="number" value="100" style="width:50px;"> 
@@ -1026,6 +1010,64 @@ window.addEventListener('keydown', function(e) {
     debugVisible = false;
   }
 });
+// Adiciona botão de tiro automático na interface
+window.addEventListener('DOMContentLoaded', function() {
+  const controls = document.getElementById('game-controls');
+  if (controls && !document.getElementById('autofire-btn')) {
+    const autoBtn = document.createElement('button');
+    autoBtn.id = 'autofire-btn';
+    autoBtn.textContent = 'Tiro Automático: OFF';
+    autoBtn.style.padding = '7px 18px';
+    autoBtn.style.fontSize = '16px';
+    autoBtn.style.borderRadius = '7px';
+    autoBtn.style.background = '#222';
+    autoBtn.style.color = '#fff';
+    autoBtn.style.border = '2px solid #fff';
+    autoBtn.style.cursor = 'pointer';
+    autoBtn.onclick = function() {
+      autoFire = !autoFire;
+      autoBtn.textContent = autoFire ? 'Tiro Automático: ON' : 'Tiro Automático: OFF';
+    };
+    controls.appendChild(autoBtn);
+    // Mensagem abaixo do botão
+    const msg = document.createElement('div');
+    msg.textContent = 'Esse modo de tiro é pros fracos! (Kaue)';
+    msg.style.color = '#ff5';
+    msg.style.fontFamily = 'monospace';
+    msg.style.fontSize = '13px';
+    msg.style.marginTop = '2px';
+    msg.style.textAlign = 'center';
+    controls.appendChild(msg);
+  }
+});
+// Corrige conflito de eventos: não impedir teclas normais ao ativar autofire
+window.addEventListener('keydown', function(e) {
+  if (e.code === 'Space' && !e.repeat) {
+    autoFire = !autoFire;
+    const btn = document.getElementById('autofire-btn');
+    if (btn) btn.textContent = autoFire ? 'Tiro Automático: ON' : 'Tiro Automático: OFF';
+    // Não previne comportamento padrão, assim W/A/S/D continuam funcionando
+  }
+});
+// Função de tiro automático corrigida
+function autoFireLoop() {
+  if (!autoFire || enemies.length === 0) return;
+  // Mira no inimigo mais próximo do jogador
+  let closest = null;
+  let minDist = Infinity;
+  for (let e of enemies) {
+    const dx = e.x - player.x;
+    const dy = e.y - player.y;
+    const dist = dx * dx + dy * dy;
+    if (dist < minDist) {
+      minDist = dist;
+      closest = e;
+    }
+  }
+  if (closest) {
+    shootTowards(closest.x, closest.y);
+  }
+}
 </script>
 <audio id="bgm" src="audio/background.mp3" loop preload="auto"></audio>
 <script src="background_music.js"></script>
@@ -1081,6 +1123,8 @@ function loop() {
   if (paused) return;
   update();
   draw();
+  if (autoFire) autoFireLoop();
+  // Não chama mais tiro automático
   loopId = requestAnimationFrame(loop);
 }
 
