@@ -76,6 +76,47 @@ const bullets = [];
 const enemies = [];
 const operators = [];
 
+// Nova habilidade: bomba de tiros
+let killCount = 0;
+const BOMB_KILL_THRESHOLD = 20;
+const BOMB_RADIUS = 180; // raio de ação da bomba
+
+function triggerBomb() {
+  // Efeito visual: partículas e "explosão" ao redor do player
+  for (let i = 0; i < 32; i++) {
+    const angle = (Math.PI * 2 * i) / 32;
+    bullets.push({
+      x: player.x,
+      y: player.y,
+      dx: Math.cos(angle) * 8,
+      dy: Math.sin(angle) * 8,
+      damage: 999 // dano alto para garantir kill
+    });
+  }
+  // Mata todos os inimigos próximos
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    const e = enemies[i];
+    const dx = e.x - player.x;
+    const dy = e.y - player.y;
+    if (Math.sqrt(dx * dx + dy * dy) <= BOMB_RADIUS) {
+      // Efeito de partículas
+      for (let p = 0; p < 10; p++) {
+        particles.push({
+          x: e.x,
+          y: e.y,
+          dx: Math.random() * 6 - 3,
+          dy: Math.random() * 6 - 3,
+          life: 30
+        });
+      }
+      enemies.splice(i, 1);
+      score += 5;
+    }
+  }
+  // Efeito sonoro (opcional):
+  // const audio = new Audio('audio/bomb.mp3'); audio.play();
+}
+
 // Jogador
 const player = {  
   x: canvas.width / 2,
@@ -211,10 +252,13 @@ function autoShoot() {
     const dx = closest.x - player.x;
     const dy = closest.y - player.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
-    // Dano aumenta se value > 20
-    let damage = 1;
-    if (player.value > 20) {
-      damage += Math.floor((player.value - 20) / 2);
+    // Dano proporcional ao valor do player
+    let damage;
+    if (player.value >= 0) {
+      damage = Math.max(1, Math.floor(player.value / 2) + 1);
+    } else {
+      // Dano fracionário para valores negativos
+      damage = Math.max(0.25, 1 + player.value * 0.5); // Ex: value -2 = 0, value -4 = -1 -> min 0.25
     }
     bullets.push({
       x: player.x,
@@ -229,11 +273,90 @@ function autoShoot() {
 
 // OPERAÇÕES MATEMATICAS
 function applyOperator(op) {
-  if (op === "+") player.value += 1;
-  else if (op === "-") player.value -= 1;
-  else if (op === "*") player.value *= 2;
-  else if (op === "/") player.value = Math.floor(player.value / 2) || 0;
-  else if (op === "^") player.value = player.value * 2; // Agora ^ é multiplicar por 2
+  if (op === "+") {
+    player.value += 1;
+    // Efeito extra: recupera "vida" fictícia (exemplo: invulnerabilidade curta)
+    player.invulnerable = 30; // 30 frames de invulnerabilidade
+    // Efeito visual: partículas verdes
+    for (let i = 0; i < 10; i++) {
+      particles.push({
+        x: player.x,
+        y: player.y,
+        dx: Math.random() * 4 - 2,
+        dy: Math.random() * 4 - 2,
+        life: 20,
+        color: '#0f0'
+      });
+    }
+  } else if (op === "-") {
+    player.value -= 1;
+    // Efeito extra: boost de velocidade temporário
+    player.speedBoost = 60; // 60 frames de boost
+    // Efeito visual: partículas amarelas
+    for (let i = 0; i < 10; i++) {
+      particles.push({
+        x: player.x,
+        y: player.y,
+        dx: Math.random() * 4 - 2,
+        dy: Math.random() * 4 - 2,
+        life: 20,
+        color: '#ff0'
+      });
+    }
+  } else if (op === "*") {
+    player.value *= 2;
+    // Efeito extra: tiros mais rápidos por 5 segundos
+    player.shootBoost = 300; // 300 frames
+    // Efeito visual: partículas azuis
+    for (let i = 0; i < 12; i++) {
+      particles.push({
+        x: player.x,
+        y: player.y,
+        dx: Math.cos((Math.PI*2*i)/12)*3,
+        dy: Math.sin((Math.PI*2*i)/12)*3,
+        life: 24,
+        color: '#5cf'
+      });
+    }
+  } else if (op === "/") {
+    player.value = Math.floor(player.value / 2) || 0;
+    // Efeito extra: limpa todos os inimigos próximos (raio 120)
+    for (let i = enemies.length - 1; i >= 0; i--) {
+      const e = enemies[i];
+      const dx = e.x - player.x;
+      const dy = e.y - player.y;
+      if (Math.sqrt(dx * dx + dy * dy) < 120) {
+        enemies.splice(i, 1);
+        score += 5;
+      }
+    }
+    // Efeito visual: partículas brancas
+    for (let i = 0; i < 16; i++) {
+      particles.push({
+        x: player.x,
+        y: player.y,
+        dx: Math.cos((Math.PI*2*i)/16)*5,
+        dy: Math.sin((Math.PI*2*i)/16)*5,
+        life: 18,
+        color: '#fff'
+      });
+    }
+  } else if (op === "^") {
+    player.value *= 3;
+    // Efeito extra: player não pode atirar por 2 segundos
+    player.silenced = 120; // 120 frames
+    // Efeito visual: partículas roxas
+    for (let i = 0; i < 14; i++) {
+      particles.push({
+        x: player.x,
+        y: player.y,
+        dx: Math.cos((Math.PI*2*i)/14)*4,
+        dy: Math.sin((Math.PI*2*i)/14)*4,
+        life: 22,
+        color: '#c5f'
+      });
+    }
+  }
   score += 10;
 }
 function spawnOperator() {
@@ -418,6 +541,11 @@ function update() {
           if (e.value >= 6) spawnPowerUp(e.x, e.y);
           enemies.splice(j, 1);
           score += 5;
+          killCount++;
+          if (killCount >= BOMB_KILL_THRESHOLD) {
+            triggerBomb();
+            killCount = 0;
+          }
           for (let p = 0; p < 8; p++) {
             particles.push({
               x: e.x,

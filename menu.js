@@ -35,12 +35,7 @@ function createMenu() {
   };
   menu.appendChild(startBtn);
 
-  // Instruções
-  const instr = document.createElement('div');
-  instr.innerHTML = '<p style="color:#fff;font-family:monospace;">WASD para mover<br>O jogo começa após clicar em Iniciar</p>';
-  menu.appendChild(instr);
-
-  // Botão de personalização
+  // Botão de personalização (agora logo abaixo do botão de jogar)
   const customBtn = document.createElement('button');
   customBtn.textContent = 'Personalização';
   customBtn.style.fontSize = '1.2em';
@@ -48,6 +43,11 @@ function createMenu() {
   customBtn.style.margin = '0.5em';
   customBtn.style.cursor = 'pointer';
   menu.appendChild(customBtn);
+
+  // Instruções
+  const instr = document.createElement('div');
+  instr.innerHTML = '<p style="color:#fff;font-family:monospace;">WASD para mover!<br></p>';
+  menu.appendChild(instr);
 
   // Aba de personalização (inicialmente oculta)
   const customDiv = document.createElement('div');
@@ -59,32 +59,45 @@ function createMenu() {
   customDiv.style.padding = '1em 2em';
   customDiv.style.borderRadius = '10px';
 
+  // Container para alinhar os campos de personalização
+  const customFields = document.createElement('div');
+  customFields.style.display = 'flex';
+  customFields.style.flexDirection = 'column';
+  customFields.style.gap = '0.7em';
+  customFields.style.alignItems = 'flex-start';
+
   // Cor do personagem
   const playerColorLabel = document.createElement('label');
   playerColorLabel.textContent = 'Cor do 0: ';
   playerColorLabel.style.color = '#fff';
+  playerColorLabel.style.display = 'flex';
+  playerColorLabel.style.alignItems = 'center';
   const playerColorInput = document.createElement('input');
   playerColorInput.type = 'color';
   playerColorInput.value = '#ffffff';
   playerColorInput.style.margin = '0 0.5em';
   playerColorLabel.appendChild(playerColorInput);
-  customDiv.appendChild(playerColorLabel);
+  customFields.appendChild(playerColorLabel);
 
   // Cor do tiro
   const bulletColorLabel = document.createElement('label');
   bulletColorLabel.textContent = 'Cor do tiro: ';
   bulletColorLabel.style.color = '#fff';
+  bulletColorLabel.style.display = 'flex';
+  bulletColorLabel.style.alignItems = 'center';
   const bulletColorInput = document.createElement('input');
   bulletColorInput.type = 'color';
   bulletColorInput.value = '#5cf5ff';
   bulletColorInput.style.margin = '0 0.5em';
   bulletColorLabel.appendChild(bulletColorInput);
-  customDiv.appendChild(bulletColorLabel);
+  customFields.appendChild(bulletColorLabel);
 
   // Formato do tiro
   const bulletShapeLabel = document.createElement('label');
   bulletShapeLabel.textContent = 'Formato do tiro: ';
   bulletShapeLabel.style.color = '#fff';
+  bulletShapeLabel.style.display = 'flex';
+  bulletShapeLabel.style.alignItems = 'center';
   const bulletShapeSelect = document.createElement('select');
   ['Círculo','Quadrado','Losango','Triângulo'].forEach((shape, idx) => {
     const opt = document.createElement('option');
@@ -93,7 +106,9 @@ function createMenu() {
     bulletShapeSelect.appendChild(opt);
   });
   bulletShapeLabel.appendChild(bulletShapeSelect);
-  customDiv.appendChild(bulletShapeLabel);
+  customFields.appendChild(bulletShapeLabel);
+
+  customDiv.appendChild(customFields);
 
   // Mensagem informativa
   const infoMsg = document.createElement('div');
