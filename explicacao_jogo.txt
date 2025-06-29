@@ -1,0 +1,53 @@
+Math Survivors - Explicação do Jogo e Funções
+
+O que é o jogo?
+----------------
+Math Survivors é um jogo de sobrevivência onde o jogador controla um "0" que deve evitar inimigos (números) e coletar operadores matemáticos (+, -, *, /, ^) para modificar seu valor. O objetivo é sobreviver o máximo de waves possível, derrotando inimigos, coletando power-ups e aumentando sua pontuação. O jogo possui um painel de debug para facilitar testes e ajustes.
+
+Explicação das funções principais
+---------------------------------
+1. resizeCanvas()
+   - Ajusta o tamanho do canvas para 1920x1080 pixels.
+
+2. applyCustomization(options)
+   - Permite personalizar a cor do jogador, cor e formato dos tiros.
+
+3. spawnEnemy(num)
+   - Cria um inimigo com valor e comportamento definidos, em uma posição aleatória nas bordas do canvas.
+
+4. nextWave()
+   - Inicia a próxima wave de inimigos, aumentando a dificuldade e adicionando um novo operador matemático no campo.
+
+5. autoShoot()
+   - Faz o jogador atirar automaticamente no inimigo mais próximo, com velocidade de tiro baseada no valor do jogador.
+
+6. applyOperator(op)
+   - Aplica o operador matemático coletado ao valor do jogador (+, -, *, /, ^) e aumenta a pontuação.
+
+7. spawnOperator()
+   - Cria um operador matemático aleatório em uma posição aleatória do campo.
+
+8. spawnPowerUp(x, y)
+   - Cria um operador matemático na posição de um inimigo derrotado forte.
+
+9. update()
+   - Atualiza toda a lógica do jogo: movimentação do jogador, inimigos, tiros, operadores, partículas e verifica condições de game over.
+
+10. draw()
+    - Desenha todos os elementos do jogo no canvas: jogador, inimigos, tiros, operadores, partículas, HUD e pontos de spawn (se ativado).
+
+11. loop()
+    - Função principal de loop do jogo, chama update() e draw() a cada frame.
+
+12. startMusicOnce()
+    - Inicia a música de fundo na primeira interação do usuário.
+
+13. createDebugPanel()
+    - Cria e exibe o painel de debug para desenvolvedores, permitindo manipular variáveis do jogo em tempo real.
+
+14. window.onMenuStart
+    - Função global chamada ao sair do menu, inicia o jogo chamando nextWave() e loop().
+
+Essas funções juntas compõem a lógica central do Math Survivors.
+
+
