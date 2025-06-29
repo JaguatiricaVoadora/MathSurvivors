@@ -787,11 +787,13 @@ function createDebugPanel() {
   debugPanel.style.fontSize = '14px';
   debugPanel.style.padding = '16px 18px 12px 18px';
   debugPanel.style.borderRadius = '10px';
-  debugPanel.style.zIndex = 9999;
+  debugPanel.style.zIndex = 10001; // Aumenta z-index para ficar acima dos botões
   debugPanel.style.boxShadow = '0 2px 12px #000a';
   debugPanel.style.minWidth = '220px';
+  debugPanel.style.cursor = 'move'; // Indica que é arrastável
   debugPanel.innerHTML = `
-    <b>Debug Tool</b> <button id="dbg-close" style="float:right;background:#222;color:#fff;border:none;padding:2px 8px;border-radius:5px;cursor:pointer;">X</button><br><br>
+    <b id="dbg-title">Debug Tool</b> <button id="dbg-close" style="float:right;background:#222;color:#fff;border:none;padding:2px 8px;border-radius:5px;cursor:pointer;">X</button><br>
+    <span style="color:#ff5;font-size:13px;">Voce nao deviar mexer nessas coisa ein!</span><br><br>
     <div>Wave: <input id="dbg-wave" type="number" min="1" value="${wave}" style="width:50px;"></div>
     <div style="margin-top:8px;">Spawn inimigo:<br>
       X: <input id="dbg-x" type="number" value="100" style="width:50px;"> 
@@ -807,6 +809,33 @@ function createDebugPanel() {
     <div style="margin-top:8px;">Mostrar spawns <input id="dbg-spawnview" type="checkbox" style="vertical-align:middle;"></div>
   `;
   document.body.appendChild(debugPanel);
+
+  // Drag functionality
+  let isDragging = false;
+  let dragOffsetX = 0;
+  let dragOffsetY = 0;
+  debugPanel.addEventListener('mousedown', function(e) {
+    // Só inicia drag se clicar no topo (título ou perto dele)
+    if (e.target.id === 'dbg-title' || e.target === debugPanel) {
+      isDragging = true;
+      dragOffsetX = e.clientX - debugPanel.getBoundingClientRect().left;
+      dragOffsetY = e.clientY - debugPanel.getBoundingClientRect().top;
+      debugPanel.style.transition = 'none';
+      e.preventDefault();
+    }
+  });
+  document.addEventListener('mousemove', function(e) {
+    if (isDragging) {
+      debugPanel.style.left = (e.clientX - dragOffsetX) + 'px';
+      debugPanel.style.top = (e.clientY - dragOffsetY) + 'px';
+      debugPanel.style.right = '';
+      debugPanel.style.bottom = '';
+      debugPanel.style.position = 'fixed';
+    }
+  });
+  document.addEventListener('mouseup', function() {
+    isDragging = false;
+  });
 
   // Fechar painel
   debugPanel.querySelector('#dbg-close').onclick = () => {
