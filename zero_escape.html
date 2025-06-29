@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Math Survivors</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #534d4d;
+      font-family: monospace;
+    }
+    canvas {
+      display: block;
+      position: absolute;
+      background: #1f1f1f;
+      border: 5px solid #ffffff;
+      width: 100vw;
+      height: 100vh;
+      max-width: 1920px;
+      max-height: 1080px;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+}
+  </style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+resizeCanvas();
+window.addEventListener("resize", resizeCanvas);
+function resizeCanvas() {
+  canvas.width = 1920;
+  canvas.height = 1080;
+}
+
+const keys = {};
+document.addEventListener("keydown", e => keys[e.key] = true);
+document.addEventListener("keyup", e => keys[e.key] = false);
+
+// Variáveis do jogo
+let score = 0;
+let wave = 1;
+let shootCooldown = 0;
+const particles = [];
+const bullets = [];
+const enemies = [];
+const operators = [];
+
+// Jogador
+const player = {  
+  x: canvas.width / 2,
+  y: canvas.height / 2,
+  size: 30,
+  speed: 4,
+  value: 0
+};
+
+// Variáveis de personalização
+let playerColor = '#fff';
+let bulletColor = '#5cf';
+let bulletShape = 'circle'; // 'circle', 'square', 'diamond'
+
+// Função para aplicar personalização
+function applyCustomization(options) {
+  if (options.playerColor) playerColor = options.playerColor;
+  if (options.bulletColor) bulletColor = options.bulletColor;
+  if (options.bulletShape) bulletShape = options.bulletShape;
+}
+
+// CONTROLE DOS INIMIGOS Comuns
+function spawnEnemy(num) {
+  const side = Math.floor(Math.random() * 4);
+  let x, y;
+  if (side === 0) { x = Math.random() * canvas.width; y = -50; }
+  if (side === 1) { x = canvas.width + 50; y = Math.random() * canvas.height; }
+  if (side === 2) { x = Math.random() * canvas.width; y = canvas.height + 50; }
+  if (side === 3) { x = -50; y = Math.random() * canvas.height; }
+  spawnPoints.push({x, y, time: Date.now()});
+  let hp = num;
+  // Novo: aumenta velocidade de todos os inimigos até a wave 30
+  let maxWaveSpeed = Math.min(wave, 30);
+  let speedBoost = (maxWaveSpeed - 1) * 0.025; // 0.025 por wave até 30
+  let speed = 0.5 + num * 0.15 + speedBoost;
+  let behavior = "normal";
+  let jumpLevel = 0;
+  let isComedor = false;
+  let color = "#0f0";
+  
+  if (player.value < 0) {hp += Math.abs(player.value);} // valor negativo = inimigos mais forte
+  if (num === 1) { speed = 0.5 + speedBoost; hp = 1; behavior = "slow"; }
+  if (num === 2) { speed = 0.5 + speedBoost; hp = 2; behavior = "merge"; }
+  if (num === 6) { speed = 0.8 + num * 0.1 + speedBoost; hp = num; behavior = "normal"; }
+  if (num === 7) { speed = 2.2 + speedBoost; hp = 7; behavior = "fast"; }
+  if (num === 3 || num === 4 || num === 5) { speed = 0.8 + num * 0.1 + speedBoost; hp = num; behavior = "normal"; }
+  // Bosses dezenas: na sua wave são boss, depois viram normais nerfados
+  if (num >= 10 && num % 10 === 0) {
+    if (wave === num) {
+      behavior = "jump";
+      jumpLevel = Math.floor(num / 5);
+      speed = 0.45 + jumpLevel * 0.10 + speedBoost; // Nerf: reduzido de 0.6+ para 0.45+
+      hp = num + jumpLevel;
+    } else if (wave > num) {
+      // Após a wave, aparecem como normais nerfados
+      behavior = "jump";
+      jumpLevel = Math.max(1, Math.floor(num / 5) - 1); // jumpLevel menor
+      speed = 0.32 + jumpLevel * 0.07 + speedBoost; // Nerf: reduzido de 0.4+ para 0.32+
+      hp = Math.floor(num * 0.7); // menos vida
+    }
+  }
+  // SubBosses: só aparecem na sua wave, wave exclusiva
+  if (num >= 15 && num % 10 === 5 && wave === num) {
+    behavior = "jump";
+    jumpLevel = Math.floor(num / 5);
+    speed = 0.55 + jumpLevel * 0.16 + speedBoost; // Nerf: reduzido de 0.7+ para 0.55+
+    hp = num + jumpLevel;
+  }
+  // Comedor de PowerUp: 30% de chance, cor vermelha
+  if (Math.random() < 0.3) {
+    isComedor = true;
+    color = "#f00";
+  }
+  enemies.push({ x, y, size: 30, value: num, hp, speed, behavior, jumpTimer: 0, jumpDir: 0, jumpLevel, isComedor, color, hit: 0, hitNums: [] });
+}
+
+
+
+function nextWave() {
+  // Bosses nas waves 10, 20, 30...
+  if (wave % 10 === 0) {
+    spawnEnemy(wave); // Boss: 10, 20, 30, ...
+  } else if (wave >= 15 && wave % 10 === 5) {
+    spawnEnemy(wave); // SubBoss: 15, 25, 35, ...
+  } else {
+    // Inimigos comuns (inclui bosses dezenas após suas waves)
+    for (let i = 0; i < wave; i++) {
+      let value;
+      let maxEnemy = Math.min(7, Math.max(3, wave + 1)); // Limita força máxima dos inimigos comuns
+      do {
+        value = Math.ceil(Math.random() * maxEnemy);
+        // 10, 20, 30... podem aparecer após suas waves
+        if (wave > 10 && [5,6,7].includes(value) && Math.random() < (3/7)) {
+          // 3/7 de chance de sortear um boss dezena já passado
+          let bossNum = Math.floor(wave / 10) * 10;
+          if (bossNum >= 10 && bossNum < wave) value = bossNum;
+        }
+      } while (value === 8 || value === 9);
+      spawnEnemy(value);
+    }
+  }
+  spawnOperator();
+  wave++;
+}
+
+// TIROS
+let lastShotTime = 0;
+function autoShoot() {
+  if (enemies.length === 0) return;
+  const now = Date.now();
+  // Tiros mais lentos: value 0 = 1/s, value 2 = 1.5/s, value 4 = 2/s, etc
+  const shotsPerSecond = Math.max(1, Math.floor((player.value + 2) / 2));
+  const cooldown = 1000 / shotsPerSecond;
+  if (now - lastShotTime < cooldown) return;
+  let closest = null;
+  let distMin = Infinity;
+  for (let e of enemies) {
+    const dx = e.x - player.x;
+    const dy = e.y - player.y;
+    const dist = dx * dx + dy * dy;
+    if (dist < distMin) {
+      distMin = dist;
+      closest = e;
+    }
+  }
+  if (closest) {
+    const dx = closest.x - player.x;
+    const dy = closest.y - player.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    bullets.push({
+      x: player.x,
+      y: player.y,
+      dx: (dx / dist) * 6,
+      dy: (dy / dist) * 6,
+      damage: 1
+    });
+    lastShotTime = now;
+  }
+}
+
+// OPERAÇÕES MATEMÁTICAS
+function applyOperator(op) {
+  if (op === "+") player.value += 1;
+  else if (op === "-") player.value -= 1;
+  else if (op === "*") player.value *= 2;
+  else if (op === "/") player.value = Math.floor(player.value / 2) || 0;
+  else if (op === "^") player.value = player.value * 2; // Agora ^ é multiplicar por 2
+  score += 10;
+}
+function spawnOperator() {
+  const ops = ["+", "-", "*", "/", "^"]; // Removido o %
+  const op = ops[Math.floor(Math.random() * ops.length)];
+  operators.push({
+    x: Math.random() * canvas.width,
+    y: Math.random() * canvas.height,
+    size: 25,
+    symbol: op
+  });
+}
+
+// Spawn de power up, por wave
+function spawnPowerUp(x, y) {
+  // Cria um operador aleatório na posição do inimigo derrotado
+  const ops = ["+", "-", "*", "/", "^"];
+  const op = ops[Math.floor(Math.random() * ops.length)];
+  operators.push({
+    x: x,
+    y: y,
+    size: 25,
+    symbol: op
+  });
+}
+
+// Player Behaviors
+function update() {
+  if (keys["w"]) player.y -= player.speed;
+  if (keys["s"]) player.y += player.speed;
+  if (keys["a"]) player.x -= player.speed;
+  if (keys["d"]) player.x += player.speed;
+  player.x = Math.max(0, Math.min(canvas.width, player.x));
+  player.y = Math.max(0, Math.min(canvas.height, player.y));
+
+  // Enemies
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    const e = enemies[i];
+    let dx = player.x - e.x;
+    let dy = player.y - e.y;
+    let dist = Math.sqrt(dx * dx + dy * dy);
+    // Enemy behaviors
+    if (e.isComedor && operators.length > 0) {
+      // Comedor persegue o powerUp mais próximo, mas ataca o player se estiver mais perto
+      let closestOp = null;
+      let minDist = Infinity;
+      for (let op of operators) {
+        let dxOp = op.x - e.x;
+        let dyOp = op.y - e.y;
+        let distOp = dxOp * dxOp + dyOp * dyOp;
+        if (distOp < minDist) {
+          minDist = distOp;
+          closestOp = op;
+        }
+      }
+      let distToPlayer = dist * dist; // dist já é sqrt, então dist^2
+      if (closestOp && minDist < distToPlayer) {
+        // Persegue o powerUp
+        let dxOp = closestOp.x - e.x;
+        let dyOp = closestOp.y - e.y;
+        let distOp = Math.sqrt(dxOp * dxOp + dyOp * dyOp);
+        e.x += (dxOp / distOp) * e.speed;
+        e.y += (dyOp / distOp) * e.speed;
+        // Se encostar no powerUp, remove ele
+        if (distOp < 25) {
+          let idx = operators.indexOf(closestOp);
+          if (idx !== -1) operators.splice(idx, 1);
+        }
+        continue;
+      } else {
+        // Persegue o player
+        e.x += (dx / dist) * e.speed * 1.1;
+        e.y += (dy / dist) * e.speed * 1.1;
+        if (dist < 20) {
+          alert("Game Over!\nScore: " + score);
+          location.reload();
+        }
+        continue;
+      }
+    }
+    if (e.behavior === "slow") {
+      e.x += (dx / dist) * e.speed * 0.5;
+      e.y += (dy / dist) * e.speed * 0.5;
+    } else if (e.behavior === "merge") {
+      e.x += (dx / dist) * e.speed * 0.5;
+      e.y += (dy / dist) * e.speed * 0.5;
+      for (let j = 0; j < enemies.length; j++) {
+        if (i !== j && enemies[j].value === 2 && Math.abs(e.x - enemies[j].x) < 20 && Math.abs(e.y - enemies[j].y) < 20) {
+          enemies.splice(i, 1);
+          enemies.splice(j > i ? j - 1 : j, 1);
+          spawnEnemy(4);
+          break;
+        }
+      }
+    } else if (e.behavior === "jump") {
+      let jumpFrames = 40 - (e.jumpLevel || 0) * 7;
+      if (jumpFrames < 10) jumpFrames = 10;
+      if (e.jumpTimer <= 0) {
+        e.jumpDir = Math.atan2(dy, dx) + (Math.random() - 0.5) * 0.7;
+        e.jumpTimer = jumpFrames + Math.random() * 10;
+      }
+      let jumpSpeed = (e.speed * 6) + (e.jumpLevel || 0) * 1.5;
+      e.x += Math.cos(e.jumpDir) * jumpSpeed;
+      e.y += Math.sin(e.jumpDir) * jumpSpeed;
+      e.jumpTimer--;
+    } else if (e.behavior === "fast") {
+      e.x += (dx / dist) * e.speed * 1.2;
+      e.y += (dy / dist) * e.speed * 1.2;
+    } else {
+      e.x += (dx / dist) * e.speed;
+      e.y += (dy / dist) * e.speed;
+    }
+    if (dist < 20) {
+      alert("Game Over!\nScore: " + score);
+      location.reload();
+    }
+  }
+
+  // Bullets
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    const b = bullets[i];
+    b.x += b.dx;
+    b.y += b.dy;
+
+    for (let j = enemies.length - 1; j >= 0; j--) {
+      const e = enemies[j];
+      const dx = b.x - e.x;
+      const dy = b.y - e.y;
+      if (Math.sqrt(dx * dx + dy * dy) < 20) {
+        e.hp -= b.damage;
+        e.hit = 6;
+        // Efeito: números pequenos saindo
+        for (let n = 0; n < 3; n++) {
+          const ang = Math.random() * Math.PI * 2;
+          const speed = 1 + Math.random() * 1.5;
+          e.hitNums.push({
+            x: e.x,
+            y: e.y,
+            dx: Math.cos(ang) * speed,
+            dy: Math.sin(ang) * speed,
+            life: 12 + Math.floor(Math.random() * 6),
+            value: e.value
+          });
+        }
+        bullets.splice(i, 1);
+        if (e.hp <= 0) {
+          // Dropa power up se for inimigo forte (6+) ou boss (10+)
+          if (e.value >= 6) spawnPowerUp(e.x, e.y);
+          enemies.splice(j, 1);
+          score += 5;
+          for (let p = 0; p < 8; p++) {
+            particles.push({
+              x: e.x,
+              y: e.y,
+              dx: Math.random() * 4 - 2,
+              dy: Math.random() * 4 - 2,
+              life: 30
+            });
+          }
+        }
+        break;
+      }
+    }
+
+    if (b.x < 0 || b.x > canvas.width || b.y < 0 || b.y > canvas.height) {
+      bullets.splice(i, 1);
+    }
+  }
+
+  // Operators
+  for (let i = operators.length - 1; i >= 0; i--) {
+    const op = operators[i];
+    const dx = player.x - op.x;
+    const dy = player.y - op.y;
+    if (Math.sqrt(dx * dx + dy * dy) < 25) {
+      applyOperator(op.symbol);
+      operators.splice(i, 1);
+    }
+  }
+
+  // Particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.dx;
+    p.y += p.dy;
+    p.life--;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+
+  if (enemies.length === 0) nextWave();
+  autoShoot();
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Novo: desenha pontos de spawn se ativado
+  if (showSpawns && spawnPoints.length > 0) {
+    ctx.save();
+    for (let pt of spawnPoints) {
+      // Desenha um alvo vermelho
+      ctx.beginPath();
+      ctx.strokeStyle = '#f55';
+      ctx.lineWidth = 3;
+      ctx.arc(pt.x, pt.y, 18, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(pt.x - 10, pt.y);
+      ctx.lineTo(pt.x + 10, pt.y);
+      ctx.moveTo(pt.x, pt.y - 10);
+      ctx.lineTo(pt.x, pt.y + 10);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // Player
+  ctx.fillStyle = playerColor;
+  ctx.font = player.size + "px monospace";
+  ctx.fillText("0", player.x, player.y);
+
+  // Enemies
+  for (let e of enemies) {
+    ctx.save();
+    // Efeito de hit removido
+    ctx.restore();
+    ctx.fillStyle = e.color || "#0f0";
+    ctx.font = e.size + "px monospace";
+    ctx.fillText(e.value, e.x, e.y);
+    // Improved health bar
+    const barWidth = 30;
+    const barHeight = 5;
+    const barX = e.x - barWidth / 2;
+    const barY = e.y - e.size / 2 - 12;
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(barX, barY, barWidth, barHeight);
+    ctx.fillStyle = "#0f0";
+    ctx.fillRect(barX, barY, barWidth * (e.hp / e.value), barHeight);
+
+    // Números pequenos do efeito de hit
+    for (let h = e.hitNums.length - 1; h >= 0; h--) {
+      const num = e.hitNums[h];
+      num.x += num.dx;
+      num.y += num.dy;
+      num.dy += 0.08; // gravidade
+      num.life--;
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, num.life / 16);
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 11px monospace';
+      ctx.fillText(num.value, num.x, num.y);
+      ctx.restore();
+      if (num.life <= 0) e.hitNums.splice(h, 1);
+    }
+  }
+
+  // Bullets
+  for (let b of bullets) {
+    ctx.fillStyle = bulletColor;
+    if (bulletShape === 'circle') {
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, 4, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (bulletShape === 'square') {
+      ctx.fillRect(b.x - 4, b.y - 4, 8, 8);
+    } else if (bulletShape === 'diamond') {
+      ctx.save();
+      ctx.translate(b.x, b.y);
+      ctx.rotate(Math.PI / 4);
+      ctx.fillRect(-4, -4, 8, 8);
+      ctx.restore();
+    } else if (bulletShape === 'triangle') {
+      ctx.save();
+      ctx.translate(b.x, b.y);
+      // Calcular o ângulo do movimento do tiro
+      const angle = Math.atan2(b.dy, b.dx);
+      ctx.rotate(angle);
+      ctx.beginPath();
+      ctx.moveTo(6, 0); // ponta para frente
+      ctx.lineTo(-4, 4.5);
+      ctx.lineTo(-4, -4.5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  // Operators
+  for (let op of operators) {
+    ctx.fillStyle = "#5f5";
+    ctx.font = op.size + "px monospace";
+    ctx.fillText(op.symbol, op.x, op.y);
+  }
+
+  // Particles
+  ctx.fillStyle = "#fff";
+  for (let p of particles) {
+    ctx.globalAlpha = p.life / 30;
+    ctx.fillRect(p.x, p.y, 2, 2);
+  }
+  ctx.globalAlpha = 1;
+
+  // HUD
+  ctx.fillStyle = "white";
+  ctx.font = "18px monospace";
+  ctx.fillText("Score: " + score, 20, 30);
+  ctx.fillText("Wave: " + (wave - 1), 20, 50);
+  ctx.fillText("Value: " + player.value, 20, 70); 
+}
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// Adiciona função global para iniciar o jogo após o menu
+window.onMenuStart = function() {
+  // Começa o loop do jogo e a próxima wave
+  nextWave();
+  loop();
+};
+// Pausa o loop do jogo até o menu ser fechado
+
+// Inicia música de fundo após primeira interação do usuário
+let musicStarted = false;
+function startMusicOnce() {
+  if (!musicStarted) {
+    const audio = document.getElementById('bgm');
+    if (audio) {
+      audio.volume = 0.5;
+      audio.play();
+      musicStarted = true;
+      window.removeEventListener('pointerdown', startMusicOnce);
+      window.removeEventListener('keydown', startMusicOnce);
+    }
+  }
+}
+window.addEventListener('pointerdown', startMusicOnce);
+window.addEventListener('keydown', startMusicOnce);
+
+// Debug Tool para devs
+let debugPanel = null;
+let debugVisible = false;
+let showSpawns = false; // Novo: controla exibição dos spawns
+let spawnPoints = []; // Novo: armazena pontos de spawn
+
+function createDebugPanel() {
+  if (debugPanel) return;
+  debugPanel = document.createElement('div');
+  debugPanel.style.position = 'fixed';
+  debugPanel.style.top = '10px';
+  debugPanel.style.right = '10px';
+  debugPanel.style.background = 'rgba(30,30,30,0.97)';
+  debugPanel.style.color = '#fff';
+  debugPanel.style.fontFamily = 'monospace';
+  debugPanel.style.fontSize = '14px';
+  debugPanel.style.padding = '16px 18px 12px 18px';
+  debugPanel.style.borderRadius = '10px';
+  debugPanel.style.zIndex = 9999;
+  debugPanel.style.boxShadow = '0 2px 12px #000a';
+  debugPanel.style.minWidth = '220px';
+  debugPanel.innerHTML = `
+    <b>Debug Tool</b> <button id="dbg-close" style="float:right;background:#222;color:#fff;border:none;padding:2px 8px;border-radius:5px;cursor:pointer;">X</button><br><br>
+    <div>Wave: <input id="dbg-wave" type="number" min="1" value="${wave}" style="width:50px;"></div>
+    <div style="margin-top:8px;">Spawn inimigo:<br>
+      X: <input id="dbg-x" type="number" value="100" style="width:50px;"> 
+      Y: <input id="dbg-y" type="number" value="100" style="width:50px;"> 
+      Valor: <input id="dbg-val" type="number" min="1" max="99" value="1" style="width:40px;">
+      <button id="dbg-spawn" style="margin-left:4px;">Spawn</button>
+    </div>
+    <div style="margin-top:8px;">Player Value: <input id="dbg-pval" type="number" value="${player.value}" style="width:50px;"> <button id="dbg-setpval">Set</button></div>
+    <div style="margin-top:8px;">Score: <input id="dbg-score" type="number" value="${score}" style="width:60px;"> <button id="dbg-setscr">Set</button></div>
+    <div style="margin-top:8px;">[D]espawn todos inimigos <button id="dbg-despawn">Despawn</button></div>
+    <div style="margin-top:8px;">[N]ext Wave <button id="dbg-nextwave">Next</button></div>
+    <div style="margin-top:8px;">[A]dd PowerUp <button id="dbg-addop">Add</button></div>
+    <div style="margin-top:8px;">Mostrar spawns <input id="dbg-spawnview" type="checkbox" style="vertical-align:middle;"></div>
+  `;
+  document.body.appendChild(debugPanel);
+
+  // Fechar painel
+  debugPanel.querySelector('#dbg-close').onclick = () => {
+    debugPanel.style.display = 'none';
+    debugVisible = false;
+  };
+  // Controlador de wave
+  debugPanel.querySelector('#dbg-wave').onchange = e => {
+    wave = parseInt(e.target.value) || 1;
+  };
+  // Spawn inimigo
+  debugPanel.querySelector('#dbg-spawn').onclick = () => {
+    const x = parseFloat(debugPanel.querySelector('#dbg-x').value);
+    const y = parseFloat(debugPanel.querySelector('#dbg-y').value);
+    const val = parseInt(debugPanel.querySelector('#dbg-val').value) || 1;
+    spawnEnemy(val);
+    if (enemies.length > 0) {
+      enemies[enemies.length-1].x = x;
+      enemies[enemies.length-1].y = y;
+    }
+  };
+  // Player value
+  debugPanel.querySelector('#dbg-setpval').onclick = () => {
+    player.value = parseInt(debugPanel.querySelector('#dbg-pval').value) || 0;
+  };
+  // Score
+  debugPanel.querySelector('#dbg-setscr').onclick = () => {
+    score = parseInt(debugPanel.querySelector('#dbg-score').value) || 0;
+  };
+  // Despawn inimigos
+  debugPanel.querySelector('#dbg-despawn').onclick = () => {
+    enemies.length = 0;
+  };
+  // Next wave
+  debugPanel.querySelector('#dbg-nextwave').onclick = () => {
+    enemies.length = 0;
+    nextWave();
+  };
+  // Add PowerUp
+  debugPanel.querySelector('#dbg-addop').onclick = () => {
+    spawnOperator();
+  };
+  // Novo: Mostrar spawns
+  debugPanel.querySelector('#dbg-spawnview').onchange = e => {
+    showSpawns = e.target.checked;
+  };
+}
+
+// Atalho para abrir/fechar debug tool
+window.addEventListener('keydown', function(e) {
+  if (e.key === '0' && !debugVisible) {
+    createDebugPanel();
+    debugPanel.style.display = 'block';
+    debugVisible = true;
+  } else if (e.key === '0' && debugVisible) {
+    debugPanel.style.display = 'none';
+    debugVisible = false;
+  }
+});
+</script>
+<audio id="bgm" src="audio/background.mp3" loop preload="auto"></audio>
+<script src="background_music.js"></script>
+<script src="menu.js"></script>
+</body>
+</html>
