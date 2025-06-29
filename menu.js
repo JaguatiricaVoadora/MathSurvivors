@@ -8,7 +8,7 @@ function createMenu() {
   menu.style.left = 0; 
   menu.style.width = '100vw';
   menu.style.height = '100vh';
-  menu.style.background = 'rgba(26, 23, 23, 0.92)';
+  menu.style.background = 'rgba(22, 20, 20, 0.92)';
   menu.style.display = 'flex';
   menu.style.flexDirection = 'column';
   menu.style.justifyContent = 'center';
